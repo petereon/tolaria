@@ -11,6 +11,7 @@ mod migration;
 mod parsing;
 mod rename;
 mod rename_transaction;
+mod tasks;
 mod title_sync;
 mod trash;
 mod views;
