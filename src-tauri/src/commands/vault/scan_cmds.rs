@@ -1,6 +1,6 @@
 use crate::commands::expand_tilde;
 use crate::search::SearchResponse;
-use crate::vault::VaultEntry;
+use crate::vault::{CheckboxTask, VaultEntry};
 use crate::{search, vault, vault_list};
 use std::path::{Path, PathBuf};
 
@@ -104,10 +104,44 @@ pub async fn search_vault(
         .map_err(|e| format!("Search task failed: {}", e))?
 }
 
+#[tauri::command]
+pub fn get_vault_tasks(vault_path: PathBuf) -> Result<Vec<CheckboxTask>, String> {
+    let raw = vault_path.to_string_lossy();
+    let expanded = expand_tilde(raw.as_ref()).into_owned();
+    vault::get_all_vault_tasks(std::path::Path::new(&expanded))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{collect_registered_vault_roots, find_registered_vault_root};
+    use super::{collect_registered_vault_roots, find_registered_vault_root, get_vault_tasks};
     use crate::vault_list::{VaultEntry as VaultListEntry, VaultList};
+    use tempfile::TempDir;
+
+    #[test]
+    fn get_vault_tasks_returns_tasks_from_vault() {
+        let dir = TempDir::new().unwrap();
+        let note = dir.path().join("work.md");
+        std::fs::write(
+            &note,
+            "# Work\n\n- [ ] Finish report due:2025-06-01\n- [x] Done thing\n",
+        )
+        .unwrap();
+
+        let tasks = get_vault_tasks(dir.path().to_path_buf()).unwrap();
+        assert_eq!(tasks.len(), 2);
+        // Open tasks first
+        assert!(!tasks[0].completed);
+        assert_eq!(tasks[0].text, "Finish report");
+        assert_eq!(tasks[0].deadline, Some("2025-06-01".to_string()));
+        assert!(tasks[1].completed);
+    }
+
+    #[test]
+    fn get_vault_tasks_empty_vault_returns_empty() {
+        let dir = TempDir::new().unwrap();
+        let tasks = get_vault_tasks(dir.path().to_path_buf()).unwrap();
+        assert!(tasks.is_empty());
+    }
 
     #[test]
     fn finds_registered_vault_root_for_an_absolute_note_path() {
