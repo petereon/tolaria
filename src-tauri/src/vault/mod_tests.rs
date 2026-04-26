@@ -43,3 +43,6 @@ mod type_and_links;
 // save_image tests are in vault/image.rs
 // purge_trash tests are in vault/trash.rs
 // rename_note tests are in vault/rename.rs
+// checkbox task extraction integration tests
+#[path = "mod_tests/tasks_integration.rs"]
+mod tasks_integration;
