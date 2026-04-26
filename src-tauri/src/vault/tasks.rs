@@ -282,4 +282,96 @@ mod tests {
         assert_eq!(tasks[0].note_path, "/vault/my-note.md");
         assert_eq!(tasks[0].note_title, "My Note");
     }
+
+    // --- datetime deadline tests ---
+
+    #[test]
+    fn parses_due_keyword_with_time() {
+        let content = "- [ ] Write report due:2024-12-15T14:30\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
+        assert_eq!(tasks[0].deadline, Some("2024-12-15T14:30".to_string()));
+        assert_eq!(tasks[0].text, "Write report");
+    }
+
+    #[test]
+    fn parses_at_form_with_time() {
+        let content = "- [ ] Ship @2024-12-15T09:00\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
+        assert_eq!(tasks[0].deadline, Some("2024-12-15T09:00".to_string()));
+        assert_eq!(tasks[0].text, "Ship");
+    }
+
+    #[test]
+    fn parses_emoji_form_with_time() {
+        let content = "- [ ] Demo 📅2024-12-15T18:45\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
+        assert_eq!(tasks[0].deadline, Some("2024-12-15T18:45".to_string()));
+        assert_eq!(tasks[0].text, "Demo");
+    }
+
+    #[test]
+    fn rejects_invalid_hour() {
+        let content = "- [ ] Bad due:2024-12-15T25:00\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
+        assert_eq!(tasks[0].deadline, None);
+        assert!(tasks[0].text.contains("due:2024-12-15T25:00"));
+    }
+
+    #[test]
+    fn rejects_invalid_minute() {
+        let content = "- [ ] Bad due:2024-12-15T10:60\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
+        assert_eq!(tasks[0].deadline, None);
+        assert!(tasks[0].text.contains("due:2024-12-15T10:60"));
+    }
+
+    #[test]
+    fn rejects_partial_time_suffix() {
+        // Only hour, no minute — regex should not match the T portion at all,
+        // so the date-only part may match; but if the regex anchors \b after the
+        // optional group, it must NOT produce a datetime deadline.
+        let content = "- [ ] Bad due:2024-12-15T10\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
+        // The date part alone (without T) is still valid — deadline is date-only.
+        // The key assertion is that the time suffix is not captured.
+        assert!(
+            tasks[0]
+                .deadline
+                .as_deref()
+                .map_or(true, |d| !d.contains('T')),
+            "partial time suffix must not appear in deadline"
+        );
+    }
+
+    #[test]
+    fn strips_datetime_token_from_text() {
+        let content = "- [ ] Buy milk due:2024-12-15T14:30 and bread\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
+        assert_eq!(tasks[0].deadline, Some("2024-12-15T14:30".to_string()));
+        assert_eq!(tasks[0].text, "Buy milk and bread");
+    }
+
+    #[test]
+    fn toggle_preserves_datetime_token() {
+        let content = "- [ ] Write report due:2024-12-15T14:30\n";
+        let toggled = toggle_checkbox_in_content(content, 1);
+        assert_eq!(toggled, "- [x] Write report due:2024-12-15T14:30\n");
+    }
+
+    #[test]
+    fn serializes_datetime_to_camel_case_json() {
+        let task = CheckboxTask {
+            note_path: "/vault/note.md".to_string(),
+            note_title: "Note".to_string(),
+            text: "Write report".to_string(),
+            completed: false,
+            deadline: Some("2024-12-15T14:30".to_string()),
+            line_number: 1,
+        };
+        let json = serde_json::to_string(&task).expect("serialization failed");
+        assert!(
+            json.contains(r#""deadline":"2024-12-15T14:30""#),
+            "JSON did not contain expected datetime deadline: {json}"
+        );
+    }
 }

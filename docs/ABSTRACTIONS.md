@@ -345,6 +345,27 @@ Command-layer path access is fenced to the active vault before file operations r
 UI-only file actions operate on paths that are already selected or indexed in React state. Reveal-in-Finder and external-open calls route through the Tauri opener plugin, while copy-path uses the browser clipboard API; none of those actions mutate vault contents or bypass the backend write boundary.
 
 The local MCP WebSocket bridge follows the same active-vault boundary. `useVaultSwitcher` calls `sync_mcp_bridge_vault` after the persisted selection loads and after each vault switch; the desktop command starts/restarts the bridge with that vault's canonical path, or stops it when there is no selected vault. MCP Node entrypoints require `VAULT_PATH` and fail clearly instead of falling back to `~/Laputa`.
+### Checkbox Task Extraction
+
+`vault::get_all_vault_tasks(vault_path)` in `src-tauri/src/vault/tasks.rs`:
+
+1. WalkDir scan of all `.md` files (same hidden-dir filters as `scan_vault`)
+2. For each file, calls `extract_tasks_from_content()`:
+   - Skips lines inside fenced code blocks (``` / ~~~)
+   - Matches GFM checkbox lines: `[-*+] [x/X/ ]` or `N. [x/X/ ]`
+   - Extracts deadline from any of three patterns: `due:YYYY-MM-DD`, `@YYYY-MM-DD`, `📅YYYY-MM-DD`
+   - Strips deadline token from displayed text
+3. Sorts: open tasks first → deadline asc (None last) → note path → line number
+
+`VaultEntry.task_count` is the count of open tasks only, populated in `parse_md_file`.
+It is used for badge display without fetching the full task list.
+
+**Deadline syntax (canonical: `due:YYYY-MM-DD`):**
+```markdown
+- [ ] Review PR due:2025-06-15
+- [ ] Write report @2025-06-15      # also valid
+- [ ] Send email 📅2025-06-15       # Obsidian compat
+```
 
 ### Vault Caching
 
