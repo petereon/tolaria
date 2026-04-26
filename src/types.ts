@@ -19,6 +19,8 @@ export interface VaultEntry {
   fileSize: number
   snippet: string
   wordCount: number
+  /** Number of open (uncompleted) checkbox tasks in the note body. */
+  taskCount: number
   /** Generic relationship fields: any frontmatter key whose value contains wikilinks. */
   relationships: Record<string, string[]>
   /** Phosphor icon name (kebab-case) for Type entries, e.g. "cooking-pot" */
@@ -54,6 +56,21 @@ export interface VaultEntry {
   /** File kind: "markdown", "text", or "binary". Determines editor behavior.
    *  Defaults to "markdown" when absent (for backwards compatibility). */
   fileKind?: 'markdown' | 'text' | 'binary'
+}
+
+export interface CheckboxTask {
+  /** Absolute path to the source note file. */
+  notePath: string
+  /** Display title of the source note. */
+  noteTitle: string
+  /** Task text with deadline token stripped. */
+  text: string
+  /** true if the checkbox is [x] or [X]. */
+  completed: boolean
+  /** ISO 8601 date string (YYYY-MM-DD) or null if no deadline was specified. */
+  deadline: string | null
+  /** 1-based line number in the source file. */
+  lineNumber: number
 }
 
 export type NoteStatus = 'new' | 'modified' | 'clean' | 'pendingSave' | 'unsaved'
