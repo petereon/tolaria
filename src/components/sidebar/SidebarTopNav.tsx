@@ -1,4 +1,4 @@
-import { Archive, FileText, Tray } from '@phosphor-icons/react'
+import { Archive, CheckSquare, FileText, Tray } from '@phosphor-icons/react'
 import type { SidebarSelection } from '../../types'
 import { isSelectionActive, NavItem } from '../SidebarParts'
 import { translate, type AppLocale } from '../../lib/i18n'
@@ -10,6 +10,7 @@ interface SidebarTopNavProps {
   inboxCount: number
   activeCount: number
   archivedCount: number
+  taskCount: number
   locale?: AppLocale
 }
 
@@ -20,6 +21,7 @@ export function SidebarTopNav({
   inboxCount,
   activeCount,
   archivedCount,
+  taskCount,
   locale = 'en',
 }: SidebarTopNavProps) {
   return (
@@ -55,6 +57,18 @@ export function SidebarTopNav({
         badgeStyle={{ background: 'var(--muted)' }}
         activeBadgeClassName="bg-primary text-primary-foreground"
         onClick={() => onSelect({ kind: 'filter', filter: 'archived' })}
+      />
+      <NavItem
+        icon={CheckSquare}
+        label={translate(locale, 'sidebar.nav.tasks')}
+        count={taskCount}
+        isActive={isSelectionActive(selection, { kind: 'filter', filter: 'tasks' })}
+        badgeClassName="text-muted-foreground"
+        badgeStyle={{ background: 'var(--muted)' }}
+        activeBadgeClassName="text-white"
+        activeBadgeStyle={{ background: 'var(--accent-blue, #3b82f6)' }}
+        activeClassName="bg-blue-500/10 text-blue-600 dark:text-blue-400"
+        onClick={() => onSelect({ kind: 'filter', filter: 'tasks' })}
       />
     </div>
   )

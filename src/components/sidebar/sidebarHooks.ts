@@ -60,7 +60,11 @@ export function useSidebarCollapsed() {
 export function useEntryCounts(entries: VaultEntry[]) {
   return useMemo(() => {
     const counts = countAllNotesByFilter(entries)
-    return { activeCount: counts.open, archivedCount: counts.archived }
+    const taskCount = entries.reduce(
+      (sum, entry) => (entry.archived ? sum : sum + (entry.taskCount ?? 0)),
+      0,
+    )
+    return { activeCount: counts.open, archivedCount: counts.archived, taskCount }
   }, [entries])
 }
 
