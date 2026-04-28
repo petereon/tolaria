@@ -28,6 +28,7 @@ import {
 import { useRawModeWithFlush } from './useRawModeWithFlush'
 import { createArrowLigaturesExtension } from './arrowLigaturesExtension'
 import { createMathInputExtension } from './mathInputExtension'
+import { createDueChipInputExtension } from './editor/dueChipInputExtension'
 import { useFilenameAutolinkGuard } from './useFilenameAutolinkGuard'
 import './Editor.css'
 import './EditorTheme.css'
@@ -191,7 +192,7 @@ function useEditorSetup({
     schema,
     uploadFile: (file: File) => uploadImageFile(file, vaultPathRef.current),
     _tiptapOptions: { injectNonce: RUNTIME_STYLE_NONCE },
-    extensions: [createArrowLigaturesExtension(), createMathInputExtension()],
+    extensions: [createArrowLigaturesExtension(), createMathInputExtension(), createDueChipInputExtension()],
   })
   useFilenameAutolinkGuard(editor)
   const activeTab = tabs.find((t) => t.entry.path === activeTabPath) ?? null

@@ -1,10 +1,21 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { getFormattingToolbarItems } from '@blocknote/react'
 import {
   filterTolariaFormattingToolbarItems,
   filterTolariaSlashMenuItems,
   getTolariaBlockTypeSelectItems,
+  getTolariaSlashMenuItems,
+  dueSlashItem,
+  shouldOfferDueSlashItem,
 } from './tolariaEditorFormattingConfig'
+
+vi.mock('@blocknote/react', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@blocknote/react')>()
+  return {
+    ...original,
+    getDefaultReactSlashMenuItems: vi.fn(() => []),
+  }
+})
 
 describe('tolariaEditorFormatting', () => {
   it('keeps the markdown-safe toolbar controls and block type select', () => {
@@ -74,5 +85,58 @@ describe('tolariaEditorFormatting', () => {
     expect(items.find((item) => item.key === 'code_block')?.subtext).toContain(
       'Markdown-safe fenced code block',
     )
+  })
+
+  it('dueSlashItem onItemClick invokes the onTrigger callback', () => {
+    const onTrigger = vi.fn()
+    const item = dueSlashItem({ onTrigger, locale: 'en' })
+    item.onItemClick()
+    expect(onTrigger).toHaveBeenCalledOnce()
+  })
+
+  it('dueSlashItem has expected title, aliases, and group', () => {
+    const item = dueSlashItem({ onTrigger: vi.fn(), locale: 'en' })
+    expect(item.title).toBe('Date')
+    expect(item.aliases).toEqual(expect.arrayContaining(['due', 'deadline', 'date', 'time']))
+    expect(item.group).toBe('Tasks')
+  })
+
+  it('dueSlashItem has key "due"', () => {
+    const item = dueSlashItem({ onTrigger: vi.fn(), locale: 'en' })
+    expect(item.key).toBe('due')
+  })
+
+  it('getTolariaSlashMenuItems returns the due item when passed as extra', () => {
+    const onTrigger = vi.fn()
+    const extra = dueSlashItem({ onTrigger, locale: 'en' })
+
+    // Use a minimal mock editor — getTolariaSlashMenuItems only passes it to BlockNote's
+    // getDefaultReactSlashMenuItems which we cannot call without a full BlockNote instance.
+    // Instead verify the extra item is included after filterSuggestionItems for query 'due'.
+    const items = getTolariaSlashMenuItems(
+      null as never,
+      'due',
+      [extra],
+    )
+
+    expect(items.some((item) => item.title === 'Date')).toBe(true)
+  })
+
+  describe('shouldOfferDueSlashItem', () => {
+    it('returns false for paragraph block type', () => {
+      expect(shouldOfferDueSlashItem('paragraph')).toBe(false)
+    })
+
+    it('returns true for checkListItem block type', () => {
+      expect(shouldOfferDueSlashItem('checkListItem')).toBe(true)
+    })
+
+    it('returns false for heading block type', () => {
+      expect(shouldOfferDueSlashItem('heading')).toBe(false)
+    })
+
+    it('returns false for bulletListItem block type', () => {
+      expect(shouldOfferDueSlashItem('bulletListItem')).toBe(false)
+    })
   })
 })

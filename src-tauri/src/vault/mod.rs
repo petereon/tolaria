@@ -12,6 +12,7 @@ mod migration;
 mod parsing;
 mod rename;
 mod rename_transaction;
+mod tasks;
 mod title_sync;
 mod trash;
 mod views;
@@ -22,6 +23,7 @@ pub use config_seed::{
     seed_config_files, AiGuidanceFileState, VaultAiGuidanceStatus,
 };
 pub use entry::{FolderNode, VaultEntry};
+pub use tasks::{get_all_vault_tasks, toggle_task_in_file, CheckboxTask};
 pub use file::{create_note_content, get_note_content, save_note_content};
 pub use folders::{delete_folder, rename_folder, FolderRenameResult};
 pub use getting_started::{create_getting_started_vault, default_vault_path, vault_exists};
@@ -43,6 +45,7 @@ pub use views::{
 use file::read_file_metadata;
 use frontmatter::{extract_fm_and_rels, resolve_is_a};
 use parsing::{count_body_words, extract_outgoing_links, extract_snippet, extract_title};
+use tasks::count_open_tasks;
 
 use gray_matter::engine::YAML;
 use gray_matter::Matter;
@@ -105,6 +108,7 @@ pub fn parse_md_file(path: &Path, git_dates: Option<(u64, u64)>) -> Result<Vault
     let has_h1 = parsing::extract_h1_title(&content).is_some();
     let snippet = extract_snippet(&content);
     let word_count = count_body_words(&content);
+    let task_count = count_open_tasks(&content);
     let outgoing_links = extract_outgoing_links(&parsed.content);
     let (fs_modified, fs_created, file_size) = read_file_metadata(path)?;
     let (modified_at, created_at) = resolve_entry_dates(fs_modified, fs_created, git_dates);
@@ -157,6 +161,7 @@ pub fn parse_md_file(path: &Path, git_dates: Option<(u64, u64)>) -> Result<Vault
         favorite_index: frontmatter.favorite_index,
         list_properties_display: frontmatter.list_properties_display.unwrap_or_default(),
         word_count,
+        task_count,
         outgoing_links,
         properties,
         has_h1,

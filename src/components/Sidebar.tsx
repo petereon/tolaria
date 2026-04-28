@@ -53,6 +53,7 @@ interface SidebarProps {
   onCancelRenameFolder?: () => void
   showInbox?: boolean
   inboxCount?: number
+  taskCount?: number
   locale?: AppLocale
   onCollapse?: () => void
 }
@@ -78,6 +79,7 @@ interface SidebarNavigationProps extends Pick<
   | 'onCancelRenameFolder'
   | 'showInbox'
   | 'inboxCount'
+  | 'taskCount'
   | 'onCreateNewType'
   | 'locale'
 > {
@@ -116,6 +118,7 @@ function SidebarNavigation({
   onCancelRenameFolder,
   showInbox = true,
   inboxCount = 0,
+  taskCount = 0,
   locale = 'en',
   onCreateNewType,
   activeCount,
@@ -144,6 +147,7 @@ function SidebarNavigation({
         inboxCount={inboxCount}
         activeCount={activeCount}
         archivedCount={archivedCount}
+        taskCount={taskCount}
         locale={locale}
       />
       {hasFavorites && (
@@ -242,12 +246,14 @@ export const Sidebar = memo(function Sidebar({
   onCancelRenameFolder,
   showInbox = true,
   inboxCount = 0,
+  taskCount: taskCountProp,
   locale = 'en',
   onCollapse,
   onCreateNewType,
 }: SidebarProps) {
   const { typeEntryMap, allSectionGroups, visibleSections, sectionIds } = useSidebarSections(entries)
-  const { activeCount, archivedCount } = useEntryCounts(entries)
+  const { activeCount, archivedCount, taskCount: computedTaskCount } = useEntryCounts(entries)
+  const taskCount = taskCountProp ?? computedTaskCount
   const { collapsed: groupCollapsed, toggle: toggleGroup } = useSidebarCollapsed()
   const typeInteractions = useSidebarTypeInteractions({
     allSectionGroups,
@@ -304,6 +310,7 @@ export const Sidebar = memo(function Sidebar({
         onCancelRenameFolder={onCancelRenameFolder}
         showInbox={showInbox}
         inboxCount={inboxCount}
+        taskCount={taskCount}
         locale={locale}
         onCreateNewType={onCreateNewType}
         activeCount={activeCount}

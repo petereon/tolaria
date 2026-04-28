@@ -12,6 +12,7 @@ import { SearchPanel } from './components/SearchPanel'
 import { Toast } from './components/Toast'
 import { CommitDialog } from './components/CommitDialog'
 import { PulseView } from './components/PulseView'
+import { TasksView } from './components/TasksView'
 import { StatusBar } from './components/StatusBar'
 import { SettingsPanel } from './components/SettingsPanel'
 import { CloneVaultModal } from './components/CloneVaultModal'
@@ -776,6 +777,21 @@ function App() {
     onVaultChanged: (path) => { void handlePulledVaultUpdate(path ? [path] : []) },
   })
 
+  const handleTaskWritten = useCallback(async (notePath: string) => {
+    try {
+      const fresh = await invoke<VaultEntry>('reload_vault_entry', { path: notePath })
+      vault.updateEntry(notePath, fresh)
+    } catch { /* ignore */ }
+    if (notes.tabs.some(tab => tab.entry.path === notePath)) {
+      try {
+        const freshContent = await invoke<string>('get_note_content', { path: notePath })
+        notes.setTabs(prev => prev.map(tab =>
+          tab.entry.path === notePath ? { ...tab, content: freshContent } : tab,
+        ))
+      } catch { /* ignore */ }
+    }
+  }, [notes, vault])
+
   const handleInitializeProperties = useCallback(async (path: string) => {
     await initializeNoteProperties(notes.handleUpdateFrontmatter, path)
   }, [notes])
@@ -936,6 +952,14 @@ function App() {
     () => vault.modifiedFiles.map((file) => `${file.relativePath}:${file.status}`).sort().join('|'),
     [vault.modifiedFiles],
   )
+  // Monotonic counter that bumps whenever `vault.entries` reference changes
+  // (any add/update/remove). Used as the TasksView refetch trigger so it
+  // never misses a checkbox edit, including offsetting flips that leave the
+  // total task count unchanged.
+  const [tasksRevisionKey, setTasksRevisionKey] = useState(0)
+  useEffect(() => {
+    setTasksRevisionKey((k) => k + 1)
+  }, [vault.entries])
   const autoGit = useAutoGit({
     enabled: settings.autogit_enabled === true,
     idleThresholdSeconds: settings.autogit_idle_threshold_seconds ?? 90,
@@ -1578,7 +1602,9 @@ function App() {
           {noteListVisible && (
             <>
               <div className={`app__note-list${aiActivity.highlightElement === 'notelist' ? ' ai-highlight' : ''}`} style={{ width: layout.noteListWidth }}>
-                {effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'pulse' ? (
+                {effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'tasks' ? (
+                  <TasksView vaultPath={resolvedPath} locale={appLocale} revisionKey={tasksRevisionKey} onTaskWritten={handleTaskWritten} onOpenNote={(notePath) => { const entry = vault.entries.find((e) => e.path === notePath); if (entry) notes.handleSelectNote(entry) }} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} />
+                ) : effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'pulse' ? (
                   <PulseView vaultPath={resolvedPath} onOpenNote={handlePulseOpenNote} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} locale={appLocale} />
                 ) : (
                   <NoteList entries={vault.entries} selection={effectiveSelection} selectedNote={activeTab?.entry ?? null} noteListFilter={noteListFilter} onNoteListFilterChange={setNoteListFilter} inboxPeriod={inboxPeriod} modifiedFiles={vault.modifiedFiles} modifiedFilesError={vault.modifiedFilesError} getNoteStatus={vault.getNoteStatus} sidebarCollapsed={!sidebarVisible} onSelectNote={notes.handleSelectNote} onReplaceActiveTab={handleReplaceActiveTabWithQueuedDiff} onEnterNeighborhood={handleEnterNeighborhood} onCreateNote={notes.handleCreateNoteImmediate} onBulkOrganize={explicitOrganizationEnabled ? bulkActions.handleBulkOrganize : undefined} onBulkArchive={bulkActions.handleBulkArchive} onBulkDeletePermanently={deleteActions.handleBulkDeletePermanently} onUpdateTypeSort={notes.handleUpdateFrontmatter} onUpdateViewDefinition={handleUpdateViewDefinition} updateEntry={vault.updateEntry} onOpenInNewWindow={handleOpenEntryInNewWindow} onDiscardFile={handleDiscardFile} onOpenDeletedNote={handleOpenDeletedNote} allNotesNoteListProperties={vaultConfig.allNotes?.noteListProperties ?? null} onUpdateAllNotesNoteListProperties={handleUpdateAllNotesNoteListProperties} inboxNoteListProperties={vaultConfig.inbox?.noteListProperties ?? null} onUpdateInboxNoteListProperties={handleUpdateInboxNoteListProperties} views={vault.views} visibleNotesRef={visibleNotesRef} multiSelectionCommandRef={multiSelectionCommandRef} locale={appLocale} />

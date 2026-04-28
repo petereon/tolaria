@@ -39,6 +39,8 @@ const mockEditor = vi.hoisted(() => ({
   _tiptapEditor: { commands: { setContent: vi.fn() } },
   focus: vi.fn(),
   setTextCursorPosition: vi.fn(),
+  getTextCursorPosition: vi.fn(() => ({ block: { id: '1', type: 'paragraph' } })),
+  updateBlock: vi.fn(),
 }))
 const blockNoteCreation = vi.hoisted(() => ({
   options: [] as unknown[],

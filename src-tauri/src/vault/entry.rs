@@ -66,6 +66,9 @@ pub struct VaultEntry {
     /// Word count of the note body (excludes frontmatter and H1 title).
     #[serde(rename = "wordCount")]
     pub word_count: u32,
+    /// Number of open (uncompleted) checkbox tasks in the note body.
+    #[serde(rename = "taskCount", default)]
+    pub task_count: u32,
     /// All wikilink targets found in the note body (excludes frontmatter).
     /// Extracted from `[[target]]` and `[[target|display]]` patterns.
     #[serde(rename = "outgoingLinks", default)]

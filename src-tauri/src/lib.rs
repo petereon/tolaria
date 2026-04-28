@@ -404,6 +404,8 @@ macro_rules! app_invoke_handler {
             commands::stream_ai_agent,
             commands::reload_vault,
             commands::reload_vault_entry,
+            commands::get_vault_tasks,
+            commands::toggle_task_completion,
             commands::sync_vault_asset_scope_for_window,
             commands::sync_note_title,
             commands::save_image,

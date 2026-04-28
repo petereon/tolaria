@@ -620,7 +620,14 @@ function useEditorPersistence({
     clearUnsaved(path)
     if (path.endsWith('.yml')) reloadViews?.()
     scheduleUntitledRename(path, content)
-  }, [clearUnsaved, onInternalVaultWrite, reloadViews, scheduleUntitledRename])
+    if (path.endsWith('.md')) {
+      // Refresh derived metadata (e.g. taskCount) so views like TasksView
+      // reflect checkbox edits made in the editor.
+      void invoke<VaultEntry>('reload_vault_entry', { path })
+        .then((fresh) => updateEntry(path, fresh))
+        .catch(() => { /* best-effort */ })
+    }
+  }, [clearUnsaved, onInternalVaultWrite, reloadViews, scheduleUntitledRename, updateEntry])
 
   const {
     handleSave: handleSaveRaw,

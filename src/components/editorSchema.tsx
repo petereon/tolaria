@@ -9,6 +9,7 @@ import { MERMAID_BLOCK_TYPE } from '../utils/mermaidMarkdown'
 import type { VaultEntry } from '../types'
 import { NoteTitleIcon } from './NoteTitleIcon'
 import { MermaidDiagram } from './MermaidDiagram'
+import { DueChip } from './editor/DueChip'
 
 // Module-level cache so the WikiLink renderer (defined outside React) can access entries
 export const _wikilinkEntriesRef: { current: VaultEntry[] } = { current: [] }
@@ -137,6 +138,7 @@ export const schema = BlockNoteSchema.create({
     ...defaultInlineContentSpecs,
     wikilink: WikiLink,
     mathInline: MathInline,
+    dueChip: DueChip,
   },
 }).extend({
   blockSpecs: {

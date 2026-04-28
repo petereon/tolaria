@@ -709,6 +709,7 @@ The vault backend (`src-tauri/src/vault/`) is split into focused submodules:
 | Command | Description |
 |---------|-------------|
 | `search_vault` | Keyword search across vault files |
+| `get_vault_tasks` | Scan all vault `.md` files and return `Vec<CheckboxTask>` — sorted open-first, deadline asc |
 
 ### Vault Maintenance
 
