@@ -48,8 +48,9 @@ describe('BlockNote table handles regression', () => {
       colIndex: 0,
     } as never
 
+    // Simulate a stale/replaced table element (e.g. after a yjs collaborative edit):
+    // the element is detached from the DOM so isConnected is false.
     const staleTableWrapper = document.createElement('div')
-    editorRoot.appendChild(staleTableWrapper)
     view.tableElement = staleTableWrapper
 
     expect(() => view.update()).not.toThrow()

@@ -735,7 +735,12 @@ describe('SingleEditorView', () => {
 
     expect(updateBlock).toHaveBeenCalledWith(
       'cursor-block',
-      expect.objectContaining({ content: 'write report due:2025-01-15' }),
+      expect.objectContaining({
+        content: [
+          { type: 'text', text: 'write report ', styles: {} },
+          { type: 'dueChip', props: { value: '2025-01-15' } },
+        ],
+      }),
     )
     expect(screen.getByTestId('date-picker-popover')).toHaveAttribute('data-open', 'false')
   })

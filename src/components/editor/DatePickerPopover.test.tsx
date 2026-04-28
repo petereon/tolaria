@@ -97,7 +97,7 @@ describe('DatePickerPopover', () => {
         open
         anchorRect={null}
         selected={null}
-        locale="zh-Hans"
+        locale="zh-CN"
         onSelect={vi.fn()}
         onClose={vi.fn()}
       />,

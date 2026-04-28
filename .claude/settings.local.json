@@ -36,7 +36,8 @@
       "Bash(npx vitest *)",
       "Bash(git --version)",
       "Bash(pnpm test:coverage --reporter=text)",
-      "Bash(echo \"exit code: $?\")"
+      "Bash(echo \"exit code: $?\")",
+      "Bash(pnpm vitest:*)"
     ]
   }
 }

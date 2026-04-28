@@ -34,7 +34,6 @@ import { _wikilinkEntriesRef } from './editorSchema'
 import { useBlockNoteSideMenuHoverGuard } from './blockNoteSideMenuHoverGuard'
 import { getTolariaSlashMenuItems, dueSlashItem, shouldOfferDueSlashItem } from './tolariaEditorFormattingConfig'
 import { DateTimePickerPopover } from './editor/DateTimePickerPopover'
-import { insertDeadlineToken } from './editor/insertDeadlineToken'
 import { setDueChipLocale } from './editor/DueChip'
 import {
   TolariaFormattingToolbar,
@@ -490,22 +489,45 @@ function useInsertImageCallback(editor: ReturnType<typeof useCreateBlockNote>) {
   }, [])
 }
 
+type BlockInlineItem = {
+  type: string
+  text?: string
+  styles?: Record<string, unknown>
+  props?: Record<string, unknown>
+  content?: unknown
+}
+
 type DatePickerState = {
   open: boolean
   anchorRect: DOMRect | null
   blockId: string | null
-  currentText: string
+  blockContent: BlockInlineItem[]
 }
 
-function extractBlockPlainText(block: { content?: unknown }): string {
-  if (!Array.isArray(block.content)) return ''
-  return block.content
-    .filter(
-      (item): item is { type: 'text'; text: string } =>
-        typeof item === 'object' && item !== null && (item as { type?: unknown }).type === 'text',
-    )
-    .map((item) => item.text)
-    .join('')
+const DUE_TOKEN_STRIP_RE = /\s*due:\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?/g
+
+function applyDueDateToContent(
+  content: BlockInlineItem[],
+  isoValue: string | null,
+): BlockInlineItem[] {
+  const items: BlockInlineItem[] = content
+    .filter((item) => item.type !== 'dueChip')
+    .map((item) => {
+      if (item.type !== 'text' || typeof item.text !== 'string') return item
+      const stripped = item.text.replace(DUE_TOKEN_STRIP_RE, '').replace(/  +/g, ' ')
+      return { ...item, text: stripped }
+    })
+    .filter((item) => item.type !== 'text' || (item.text ?? '').trim() !== '')
+
+  if (isoValue === null) return items
+
+  // Ensure a separator space before the chip
+  const last = items[items.length - 1]
+  if (last?.type === 'text' && typeof last.text === 'string' && !last.text.endsWith(' ')) {
+    items[items.length - 1] = { ...last, text: last.text + ' ' }
+  }
+
+  return [...items, { type: 'dueChip', props: { value: isoValue } }]
 }
 
 /** Single BlockNote editor view — content is swapped via replaceBlocks */
@@ -532,22 +554,24 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
     open: false,
     anchorRect: null,
     blockId: null,
-    currentText: '',
+    blockContent: [],
   })
 
   const openDatePicker = useCallback(() => {
     const block = editor.getTextCursorPosition().block
-    const text = extractBlockPlainText(block as { content?: unknown })
     const el = document.querySelector(`[data-id="${block.id}"]`)
     const anchorRect = el instanceof HTMLElement ? el.getBoundingClientRect() : null
-    setDatePicker({ open: true, anchorRect, blockId: block.id, currentText: text })
+    const blockContent = Array.isArray((block as { content?: unknown }).content)
+      ? (block as { content: BlockInlineItem[] }).content
+      : []
+    setDatePicker({ open: true, anchorRect, blockId: block.id, blockContent })
   }, [editor])
 
   const handleDatePicked = useCallback((iso: string | null) => {
     setDatePicker((prev) => {
       if (prev.blockId === null) return { ...prev, open: false }
-      const newText = insertDeadlineToken(prev.currentText, iso)
-      editor.updateBlock(prev.blockId, { content: newText })
+      const newContent = applyDueDateToContent(prev.blockContent, iso)
+      editor.updateBlock(prev.blockId, { content: newContent as never })
       return { ...prev, open: false }
     })
   }, [editor])

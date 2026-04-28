@@ -23,7 +23,7 @@ const todayTask: CheckboxTask = {
   noteTitle: 'Today Note',
   text: 'Call dentist',
   completed: false,
-  deadline: '2026-04-27',
+  deadline: '2026-04-28',
   lineNumber: 1,
 }
 
