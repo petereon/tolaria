@@ -400,4 +400,13 @@ export const ZH_HANS_TRANSLATIONS = {
   'tasks.groupNoDue': '无截止日期',
   'tasks.showCompleted': '显示已完成',
   'tasks.openNote': '打开笔记',
+
+  'editor.slash.due.title': '日期',
+  'editor.slash.due.subtext': '为此任务设置截止日期',
+  'editor.slash.due.group': '任务',
+  'editor.date.today': '今天',
+  'editor.date.tomorrow': '明天',
+  'editor.date.nextWeek': '下周',
+  'editor.date.clear': '清除',
+  'editor.date.setTime': '设置时间',
 } satisfies Record<keyof typeof EN_TRANSLATIONS, string>

@@ -57,4 +57,39 @@ describe('insertDeadlineToken', () => {
       'task due:2024-06-15',
     )
   })
+
+  // datetime support
+  it('replaces existing date-only due: with new datetime', () => {
+    expect(insertDeadlineToken('write report due:2024-01-01', '2024-12-15T17:00')).toBe(
+      'write report due:2024-12-15T17:00',
+    )
+  })
+
+  it('replaces existing datetime due: with date-only (when picker drops the time)', () => {
+    expect(insertDeadlineToken('write report due:2024-01-01T09:30', '2024-12-15')).toBe(
+      'write report due:2024-12-15',
+    )
+  })
+
+  it('strips @YYYY-MM-DDTHH:MM form', () => {
+    expect(insertDeadlineToken('task @2024-12-15T14:30', '2025-01-01')).toBe(
+      'task due:2025-01-01',
+    )
+  })
+
+  it('strips 📅YYYY-MM-DDTHH:MM form', () => {
+    expect(insertDeadlineToken('task 📅2024-12-15T14:30', '2025-01-01')).toBe(
+      'task due:2025-01-01',
+    )
+  })
+
+  it('clears datetime deadline when isoDate is null', () => {
+    expect(insertDeadlineToken('task due:2024-12-15T17:00', null)).toBe(
+      'task',
+    )
+  })
+
+  it('appends datetime due: when text is empty', () => {
+    expect(insertDeadlineToken('', '2024-12-15T17:00')).toBe('due:2024-12-15T17:00')
+  })
 })

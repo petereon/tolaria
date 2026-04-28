@@ -9,11 +9,17 @@ function addDays(dateStr: string, days: number): string {
   return `${y}-${m}-${d}`
 }
 
+function stripTime(deadline: string): string {
+  const tIdx = deadline.indexOf('T')
+  return tIdx !== -1 ? deadline.slice(0, tIdx) : deadline
+}
+
 export function dueBucket(deadline: string | null, today: string): DueBucket {
   if (deadline === null) return 'none'
-  if (deadline < today) return 'overdue'
-  if (deadline === today) return 'today'
-  if (deadline === addDays(today, 1)) return 'tomorrow'
-  if (deadline < addDays(today, 7)) return 'thisweek'
+  const dateOnly = stripTime(deadline)
+  if (dateOnly < today) return 'overdue'
+  if (dateOnly === today) return 'today'
+  if (dateOnly === addDays(today, 1)) return 'tomorrow'
+  if (dateOnly < addDays(today, 7)) return 'thisweek'
   return 'later'
 }

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CheckboxTask {
     /// Absolute path to the source note file.
     pub note_path: String,
@@ -12,7 +13,7 @@ pub struct CheckboxTask {
     pub text: String,
     /// `true` if the checkbox is `[x]` or `[X]`.
     pub completed: bool,
-    /// ISO 8601 date string (`YYYY-MM-DD`) if a deadline was found, else `None`.
+    /// ISO 8601 date or datetime string (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`) if a deadline was found, else `None`.
     pub deadline: Option<String>,
     /// 1-based line number of this checkbox in the source file.
     pub line_number: usize,
@@ -27,36 +28,75 @@ fn checkbox_re() -> &'static Regex {
 
 fn due_keyword_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\bdue:(\d{4}-\d{2}-\d{2})\b").expect("due keyword regex"))
+    RE.get_or_init(|| {
+        Regex::new(r"\bdue:(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?)\b").expect("due keyword regex")
+    })
 }
 
 fn at_date_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"@(\d{4}-\d{2}-\d{2})\b").expect("at-date regex"))
+    RE.get_or_init(|| {
+        Regex::new(r"@(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?)\b").expect("at-date regex")
+    })
 }
 
 fn emoji_date_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"📅(\d{4}-\d{2}-\d{2})\b").expect("emoji date regex"))
+    RE.get_or_init(|| {
+        Regex::new(r"📅(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?)\b").expect("emoji date regex")
+    })
 }
 
-fn is_valid_iso_date(s: &str) -> bool {
-    let parts: Vec<&str> = s.splitn(3, '-').collect();
+/// Validate an ISO 8601 date (`YYYY-MM-DD`) or datetime (`YYYY-MM-DDTHH:MM`) string.
+///
+/// The date segment must have segments of length 4/2/2, all ASCII digits.
+/// The optional time segment must be exactly `HH:MM`: length 5, colon at index 2,
+/// hours in `00`-`23`, minutes in `00`-`59`.
+fn is_valid_iso_deadline(s: &str) -> bool {
+    let (date_part, time_part) = match s.split_once('T') {
+        Some((d, t)) => (d, Some(t)),
+        None => (s, None),
+    };
+
+    // Validate date segment.
+    let parts: Vec<&str> = date_part.splitn(3, '-').collect();
     if parts.len() != 3 {
         return false;
     }
-    parts[0].len() == 4
+    let date_ok = parts[0].len() == 4
         && parts[1].len() == 2
         && parts[2].len() == 2
-        && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
+        && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()));
+    if !date_ok {
+        return false;
+    }
+
+    // Validate optional time segment.
+    if let Some(t) = time_part {
+        if t.len() != 5 || t.as_bytes()[2] != b':' {
+            return false;
+        }
+        let hh = &t[..2];
+        let mm = &t[3..];
+        if !hh.chars().all(|c| c.is_ascii_digit()) || !mm.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+        let hour: u8 = hh.parse().unwrap_or(255);
+        let minute: u8 = mm.parse().unwrap_or(255);
+        if hour > 23 || minute > 59 {
+            return false;
+        }
+    }
+
+    true
 }
 
 fn extract_deadline(text: &str) -> Option<String> {
     for re in &[due_keyword_re(), at_date_re(), emoji_date_re()] {
         if let Some(caps) = re.captures(text) {
-            let date = caps[1].to_string();
-            if is_valid_iso_date(&date) {
-                return Some(date);
+            let candidate = caps[1].to_string();
+            if is_valid_iso_deadline(&candidate) {
+                return Some(candidate);
             }
         }
     }
@@ -67,7 +107,8 @@ fn strip_deadline_tokens(text: &str) -> String {
     let s = due_keyword_re().replace(text, "");
     let s = at_date_re().replace(&s, "");
     let s = emoji_date_re().replace(&s, "");
-    s.trim().to_string()
+    // Collapse runs of whitespace left by token removal, then trim edges.
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Extract all checkbox tasks from markdown content.
@@ -117,6 +158,59 @@ pub(super) fn count_open_tasks(content: &str) -> u32 {
         .into_iter()
         .filter(|t| !t.completed)
         .count() as u32
+}
+
+/// Flip the checkbox marker on `line_number` (1-based) in `content`.
+///
+/// Returns `Ok((new_content, new_completed_state))` if the target line is a
+/// recognized checkbox list item, or `Err` if the line number is out of range
+/// or the line is not a checkbox.
+pub(super) fn toggle_checkbox_in_content(
+    content: &str,
+    line_number: usize,
+) -> Result<(String, bool), String> {
+    if line_number == 0 {
+        return Err("line_number must be 1-based".into());
+    }
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    let idx = line_number - 1;
+    if idx >= lines.len() {
+        return Err(format!(
+            "line_number {line_number} out of range ({} lines)",
+            lines.len()
+        ));
+    }
+    let original = &lines[idx];
+    let caps = checkbox_re()
+        .captures(original)
+        .ok_or_else(|| format!("line {line_number} is not a checkbox: {original:?}"))?;
+    let marker = &caps[1];
+    let new_marker = if matches!(marker, "x" | "X") { ' ' } else { 'x' };
+    let new_completed = new_marker == 'x';
+    // Replace only the marker character inside the matched `[?]` brackets.
+    let bracket_start = original.find('[').expect("checkbox regex matched");
+    let mut new_line = String::with_capacity(original.len());
+    new_line.push_str(&original[..bracket_start + 1]);
+    new_line.push(new_marker);
+    new_line.push_str(&original[bracket_start + 2..]);
+    lines[idx] = new_line;
+    let mut new_content = lines.join("\n");
+    if content.ends_with('\n') {
+        new_content.push('\n');
+    }
+    Ok((new_content, new_completed))
+}
+
+/// Toggle the checkbox at `line_number` in the file at `note_path`.
+/// Reads the file, flips the checkbox, writes it back, and returns the
+/// new completed state.
+pub fn toggle_task_in_file(note_path: &std::path::Path, line_number: usize) -> Result<bool, String> {
+    let content = std::fs::read_to_string(note_path)
+        .map_err(|e| format!("Failed to read {}: {}", note_path.display(), e))?;
+    let (new_content, new_completed) = toggle_checkbox_in_content(&content, line_number)?;
+    std::fs::write(note_path, new_content)
+        .map_err(|e| format!("Failed to write {}: {}", note_path.display(), e))?;
+    Ok(new_completed)
 }
 
 /// Scan all `.md` files under `vault_path` and return every checkbox task found.
@@ -283,6 +377,108 @@ mod tests {
         assert_eq!(tasks[0].note_title, "My Note");
     }
 
+    // --- toggle tests ---
+
+    #[test]
+    fn toggle_unchecked_to_checked() {
+        let content = "# Note\n\n- [ ] Buy milk\n";
+        let (new_content, completed) = toggle_checkbox_in_content(content, 3).unwrap();
+        assert!(completed);
+        assert_eq!(new_content, "# Note\n\n- [x] Buy milk\n");
+    }
+
+    #[test]
+    fn toggle_checked_to_unchecked() {
+        let content = "- [x] Done\n";
+        let (new_content, completed) = toggle_checkbox_in_content(content, 1).unwrap();
+        assert!(!completed);
+        assert_eq!(new_content, "- [ ] Done\n");
+    }
+
+    #[test]
+    fn toggle_uppercase_x_becomes_unchecked() {
+        let content = "- [X] Done\n";
+        let (new_content, completed) = toggle_checkbox_in_content(content, 1).unwrap();
+        assert!(!completed);
+        assert_eq!(new_content, "- [ ] Done\n");
+    }
+
+    #[test]
+    fn toggle_preserves_other_lines() {
+        let content = "- [ ] First\n- [ ] Second\n- [ ] Third\n";
+        let (new_content, _) = toggle_checkbox_in_content(content, 2).unwrap();
+        assert_eq!(new_content, "- [ ] First\n- [x] Second\n- [ ] Third\n");
+    }
+
+    #[test]
+    fn toggle_preserves_indentation_and_marker_style() {
+        let content = "  * [ ] Indented asterisk\n";
+        let (new_content, _) = toggle_checkbox_in_content(content, 1).unwrap();
+        assert_eq!(new_content, "  * [x] Indented asterisk\n");
+    }
+
+    #[test]
+    fn toggle_preserves_deadline_token() {
+        let content = "- [ ] Write report due:2024-12-15\n";
+        let (new_content, _) = toggle_checkbox_in_content(content, 1).unwrap();
+        assert_eq!(new_content, "- [x] Write report due:2024-12-15\n");
+    }
+
+    #[test]
+    fn toggle_preserves_no_trailing_newline() {
+        let content = "- [ ] Task";
+        let (new_content, _) = toggle_checkbox_in_content(content, 1).unwrap();
+        assert_eq!(new_content, "- [x] Task");
+    }
+
+    #[test]
+    fn toggle_errors_on_zero_line_number() {
+        let content = "- [ ] Task\n";
+        assert!(toggle_checkbox_in_content(content, 0).is_err());
+    }
+
+    #[test]
+    fn toggle_errors_on_out_of_range_line() {
+        let content = "- [ ] Task\n";
+        assert!(toggle_checkbox_in_content(content, 99).is_err());
+    }
+
+    #[test]
+    fn toggle_errors_on_non_checkbox_line() {
+        let content = "Just a paragraph.\n";
+        assert!(toggle_checkbox_in_content(content, 1).is_err());
+    }
+
+    #[test]
+    fn toggle_task_in_file_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        std::fs::write(&path, "- [ ] Task A\n- [ ] Task B\n").unwrap();
+
+        let new_state = toggle_task_in_file(&path, 2).unwrap();
+        assert!(new_state);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(after, "- [ ] Task A\n- [x] Task B\n");
+
+        let new_state = toggle_task_in_file(&path, 2).unwrap();
+        assert!(!new_state);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(after, "- [ ] Task A\n- [ ] Task B\n");
+    }
+
+    #[test]
+    fn serializes_to_camel_case_json() {
+        let content = "- [ ] Do thing due:2024-06-01\n";
+        let tasks = extract_tasks_from_content(content, "/vault/note.md", "My Note");
+        let json = serde_json::to_string(&tasks[0]).unwrap();
+        assert!(json.contains("\"notePath\""), "missing notePath: {json}");
+        assert!(json.contains("\"noteTitle\""), "missing noteTitle: {json}");
+        assert!(json.contains("\"lineNumber\""), "missing lineNumber: {json}");
+        assert!(!json.contains("\"note_path\""), "snake_case note_path present: {json}");
+        assert!(!json.contains("\"note_title\""), "snake_case note_title present: {json}");
+        assert!(!json.contains("\"line_number\""), "snake_case line_number present: {json}");
+    }
+
     // --- datetime deadline tests ---
 
     #[test]
@@ -310,6 +506,25 @@ mod tests {
     }
 
     #[test]
+    fn accepts_midnight_and_max_minute() {
+        let midnight = "- [ ] Task due:2024-12-15T00:00\n";
+        let tasks = extract_tasks_from_content(midnight, "/vault/note.md", "Note");
+        assert_eq!(
+            tasks[0].deadline,
+            Some("2024-12-15T00:00".to_string()),
+            "midnight (T00:00) should be accepted"
+        );
+
+        let max = "- [ ] Task due:2024-12-15T23:59\n";
+        let tasks = extract_tasks_from_content(max, "/vault/note.md", "Note");
+        assert_eq!(
+            tasks[0].deadline,
+            Some("2024-12-15T23:59".to_string()),
+            "T23:59 should be accepted"
+        );
+    }
+
+    #[test]
     fn rejects_invalid_hour() {
         let content = "- [ ] Bad due:2024-12-15T25:00\n";
         let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
@@ -327,13 +542,10 @@ mod tests {
 
     #[test]
     fn rejects_partial_time_suffix() {
-        // Only hour, no minute — regex should not match the T portion at all,
-        // so the date-only part may match; but if the regex anchors \b after the
-        // optional group, it must NOT produce a datetime deadline.
+        // Only hour, no minute — the optional group requires HH:MM in full.
+        // The date-only portion is still a valid deadline; time must not appear.
         let content = "- [ ] Bad due:2024-12-15T10\n";
         let tasks = extract_tasks_from_content(content, "/vault/note.md", "Note");
-        // The date part alone (without T) is still valid — deadline is date-only.
-        // The key assertion is that the time suffix is not captured.
         assert!(
             tasks[0]
                 .deadline
@@ -354,8 +566,8 @@ mod tests {
     #[test]
     fn toggle_preserves_datetime_token() {
         let content = "- [ ] Write report due:2024-12-15T14:30\n";
-        let toggled = toggle_checkbox_in_content(content, 1);
-        assert_eq!(toggled, "- [x] Write report due:2024-12-15T14:30\n");
+        let (new_content, _) = toggle_checkbox_in_content(content, 1).unwrap();
+        assert_eq!(new_content, "- [x] Write report due:2024-12-15T14:30\n");
     }
 
     #[test]

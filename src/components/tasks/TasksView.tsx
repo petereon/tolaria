@@ -4,6 +4,7 @@ import { useVaultTasks } from '../../hooks/useVaultTasks'
 import { useDragRegion } from '../../hooks/useDragRegion'
 import { translate, type AppLocale } from '../../lib/i18n'
 import { dueBucket, type DueBucket } from './dueBucket'
+import { formatDeadline } from './formatDeadline'
 import type { CheckboxTask } from '../../types'
 import './TasksView.css'
 
@@ -13,6 +14,11 @@ interface TasksViewProps {
   onOpenNote?: (notePath: string) => void
   sidebarCollapsed?: boolean
   onExpandSidebar?: () => void
+  /** Bump from the parent (e.g. on vault save) to force a task refetch. */
+  revisionKey?: number
+  /** Called after a successful task toggle so the parent can refresh
+   *  derived state (open editor tabs, vault entry taskCount, etc). */
+  onTaskWritten?: (notePath: string) => void
 }
 
 const BUCKET_ORDER: DueBucket[] = ['overdue', 'today', 'tomorrow', 'thisweek', 'later', 'none']
@@ -53,10 +59,10 @@ interface TaskRowProps {
   bucket: DueBucket
 }
 
-function DueChip({ bucket, deadline }: { bucket: DueBucket; deadline: string | null }) {
+function DueChip({ bucket, deadline, locale }: { bucket: DueBucket; deadline: string | null; locale: AppLocale }) {
   if (!deadline || bucket === 'none') return null
   const chipClass = `task-due-chip task-due-chip--${bucket}`
-  return <span className={chipClass}>{deadline}</span>
+  return <span className={chipClass}>{formatDeadline(deadline, locale)}</span>
 }
 
 function TaskRow({ task, checked, justChecked, locale, onToggle, onOpenNote, bucket }: TaskRowProps) {
@@ -103,7 +109,7 @@ function TaskRow({ task, checked, justChecked, locale, onToggle, onOpenNote, buc
             <FileText size={10} aria-hidden="true" />
             <span className="truncate">{task.noteTitle}</span>
           </button>
-          <DueChip bucket={bucket} deadline={task.deadline} />
+          <DueChip bucket={bucket} deadline={task.deadline} locale={locale} />
         </div>
       </div>
     </div>
@@ -113,14 +119,13 @@ function TaskRow({ task, checked, justChecked, locale, onToggle, onOpenNote, buc
 interface TaskGroupProps {
   bucket: DueBucket
   tasks: CheckboxTask[]
-  checkedPaths: Set<string>
   justCheckedPaths: Set<string>
   locale: AppLocale
-  onToggle: (key: string) => void
+  onToggle: (notePath: string, lineNumber: number) => void
   onOpenNote?: (notePath: string) => void
 }
 
-function TaskGroup({ bucket, tasks, checkedPaths, justCheckedPaths, locale, onToggle, onOpenNote }: TaskGroupProps) {
+function TaskGroup({ bucket, tasks, justCheckedPaths, locale, onToggle, onOpenNote }: TaskGroupProps) {
   const [collapsed, setCollapsed] = useState(false)
   const Chevron = collapsed ? CaretRight : CaretDown
   const label = translate(locale, BUCKET_LABEL_KEY[bucket])
@@ -147,10 +152,10 @@ function TaskGroup({ bucket, tasks, checkedPaths, justCheckedPaths, locale, onTo
           <TaskRow
             key={key}
             task={task}
-            checked={checkedPaths.has(key)}
+            checked={task.completed}
             justChecked={justCheckedPaths.has(key)}
             locale={locale}
-            onToggle={() => onToggle(key)}
+            onToggle={() => onToggle(task.notePath, task.lineNumber)}
             onOpenNote={onOpenNote}
             bucket={bucket}
           />
@@ -244,47 +249,43 @@ export const TasksView = memo(function TasksView({
   onOpenNote,
   sidebarCollapsed,
   onExpandSidebar,
+  revisionKey = 0,
+  onTaskWritten,
 }: TasksViewProps) {
-  const { tasks, loading, error, reload } = useVaultTasks(vaultPath)
+  const { tasks, loading, error, reload, toggleTask } = useVaultTasks(vaultPath, revisionKey)
   const [showCompleted, setShowCompleted] = useState(false)
-  const [checkedPaths, setCheckedPaths] = useState<Set<string>>(new Set())
   const [justCheckedPaths, setJustCheckedPaths] = useState<Set<string>>(new Set())
 
   const today = getTodayString()
 
-  const handleToggle = useCallback((key: string) => {
-    setCheckedPaths((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
+  const handleToggle = useCallback((notePath: string, lineNumber: number) => {
+    const key = `${notePath}-${lineNumber}`
+    setJustCheckedPaths((jp) => {
+      const nextJp = new Set(jp)
+      nextJp.add(key)
+      return nextJp
+    })
+    setTimeout(() => {
+      setJustCheckedPaths((jp) => {
+        const nextJp = new Set(jp)
+        nextJp.delete(key)
+        return nextJp
+      })
+    }, 700)
+    toggleTask(notePath, lineNumber)
+      .then(() => onTaskWritten?.(notePath))
+      .catch(() => {
         setJustCheckedPaths((jp) => {
           const nextJp = new Set(jp)
-          nextJp.add(key)
+          nextJp.delete(key)
           return nextJp
         })
-        setTimeout(() => {
-          setJustCheckedPaths((jp) => {
-            const nextJp = new Set(jp)
-            nextJp.delete(key)
-            return nextJp
-          })
-        }, 700)
-      }
-      return next
-    })
-  }, [])
+      })
+  }, [toggleTask, onTaskWritten])
 
   const handleToggleCompleted = useCallback(() => setShowCompleted((v) => !v), [])
 
-  // Resolve completed state: task.completed OR locally checked
-  const isCompleted = useCallback((task: CheckboxTask): boolean => {
-    const key = `${task.notePath}-${task.lineNumber}`
-    return task.completed || checkedPaths.has(key)
-  }, [checkedPaths])
-
-  const openTasks = tasks.filter((t) => !isCompleted(t))
+  const openTasks = tasks.filter((t) => !t.completed)
   const openCount = openTasks.length
 
   const displayedTasks = showCompleted ? tasks : openTasks
@@ -336,7 +337,6 @@ export const TasksView = memo(function TasksView({
                   key={bucket}
                   bucket={bucket}
                   tasks={bucketTasks}
-                  checkedPaths={checkedPaths}
                   justCheckedPaths={justCheckedPaths}
                   locale={locale}
                   onToggle={handleToggle}

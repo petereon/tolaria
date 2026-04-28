@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef, useContext } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useContext, useState } from 'react'
 import { trackEvent } from '../lib/telemetry'
 import {
   useCreateBlockNote,
@@ -29,9 +29,13 @@ import { observeNativeTextAssistanceDisabled } from '../lib/nativeTextAssistance
 import { getRuntimeStyleNonce } from '../lib/runtimeStyleNonce'
 import { WikilinkSuggestionMenu, type WikilinkSuggestionItem } from './WikilinkSuggestionMenu'
 import type { VaultEntry } from '../types'
+import type { AppLocale } from '../lib/i18n'
 import { _wikilinkEntriesRef } from './editorSchema'
 import { useBlockNoteSideMenuHoverGuard } from './blockNoteSideMenuHoverGuard'
-import { getTolariaSlashMenuItems } from './tolariaEditorFormattingConfig'
+import { getTolariaSlashMenuItems, dueSlashItem, shouldOfferDueSlashItem } from './tolariaEditorFormattingConfig'
+import { DateTimePickerPopover } from './editor/DateTimePickerPopover'
+import { insertDeadlineToken } from './editor/insertDeadlineToken'
+import { setDueChipLocale } from './editor/DueChip'
 import {
   TolariaFormattingToolbar,
   TolariaFormattingToolbarController,
@@ -422,12 +426,17 @@ function useInsertWikilink(editor: ReturnType<typeof useCreateBlockNote>) {
   }, [editor])
 }
 
+type SlashMenuExtra = Parameters<typeof getTolariaSlashMenuItems>[2] extends (infer T)[] | undefined
+  ? T
+  : never
+
 function useSuggestionMenuItems(options: {
   baseItems: ReturnType<typeof buildBaseSuggestionItems>
   editor: ReturnType<typeof useCreateBlockNote>
   insertWikilink: (target: string) => void
   typeEntryMap: Record<string, VaultEntry>
   vaultPath?: string
+  slashExtras: SlashMenuExtra[]
 }) {
   const {
     baseItems,
@@ -435,6 +444,7 @@ function useSuggestionMenuItems(options: {
     insertWikilink,
     typeEntryMap,
     vaultPath,
+    slashExtras,
   } = options
 
   const buildItems = useCallback((query: string, triggerCharacter: '[[' | '@') => {
@@ -459,8 +469,8 @@ function useSuggestionMenuItems(options: {
   ), [buildItems])
 
   const getSlashMenuItems = useCallback(async (query: string) => (
-    getTolariaSlashMenuItems(editor, query)
-  ), [editor])
+    getTolariaSlashMenuItems(editor, query, slashExtras)
+  ), [editor, slashExtras])
 
   return {
     getWikilinkItems,
@@ -480,14 +490,33 @@ function useInsertImageCallback(editor: ReturnType<typeof useCreateBlockNote>) {
   }, [])
 }
 
+type DatePickerState = {
+  open: boolean
+  anchorRect: DOMRect | null
+  blockId: string | null
+  currentText: string
+}
+
+function extractBlockPlainText(block: { content?: unknown }): string {
+  if (!Array.isArray(block.content)) return ''
+  return block.content
+    .filter(
+      (item): item is { type: 'text'; text: string } =>
+        typeof item === 'object' && item !== null && (item as { type?: unknown }).type === 'text',
+    )
+    .map((item) => item.text)
+    .join('')
+}
+
 /** Single BlockNote editor view — content is swapped via replaceBlocks */
-export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange, vaultPath, editable = true }: {
+export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange, vaultPath, editable = true, locale = 'en' }: {
   editor: ReturnType<typeof useCreateBlockNote>
   entries: VaultEntry[]
   onNavigateWikilink: (target: string) => void
   onChange?: () => void
   vaultPath?: string
   editable?: boolean
+  locale?: AppLocale
 }) {
   const { cssVars } = useEditorTheme()
   const themeMode = useDocumentThemeMode()
@@ -499,9 +528,41 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
   useBlockNoteSideMenuHoverGuard(containerRef)
   useEditorLinkActivation(containerRef, onNavigateWikilink)
 
+  const [datePicker, setDatePicker] = useState<DatePickerState>({
+    open: false,
+    anchorRect: null,
+    blockId: null,
+    currentText: '',
+  })
+
+  const openDatePicker = useCallback(() => {
+    const block = editor.getTextCursorPosition().block
+    const text = extractBlockPlainText(block as { content?: unknown })
+    const el = document.querySelector(`[data-id="${block.id}"]`)
+    const anchorRect = el instanceof HTMLElement ? el.getBoundingClientRect() : null
+    setDatePicker({ open: true, anchorRect, blockId: block.id, currentText: text })
+  }, [editor])
+
+  const handleDatePicked = useCallback((iso: string | null) => {
+    setDatePicker((prev) => {
+      if (prev.blockId === null) return { ...prev, open: false }
+      const newText = insertDeadlineToken(prev.currentText, iso)
+      editor.updateBlock(prev.blockId, { content: newText })
+      return { ...prev, open: false }
+    })
+  }, [editor])
+
+  const closeDatePicker = useCallback(() => {
+    setDatePicker((prev) => ({ ...prev, open: false }))
+  }, [])
+
   useEffect(() => {
     _wikilinkEntriesRef.current = entries
   }, [entries])
+
+  useEffect(() => {
+    setDueChipLocale(locale)
+  }, [locale])
 
   useEffect(() => {
     const container = containerRef.current
@@ -514,6 +575,14 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
   const typeEntryMap = useMemo(() => buildTypeEntryMap(entries), [entries])
   const baseItems = useMemo(() => buildBaseSuggestionItems(entries), [entries])
   const insertWikilink = useInsertWikilink(editor)
+
+  const slashExtras = useMemo(() => {
+    const blockType = editor.getTextCursorPosition().block.type as string
+    return shouldOfferDueSlashItem(blockType)
+      ? [dueSlashItem({ onTrigger: openDatePicker, locale })]
+      : []
+  }, [openDatePicker, locale, editor])
+
   const {
     getWikilinkItems,
     getPersonMentionItems,
@@ -524,6 +593,7 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
     insertWikilink,
     typeEntryMap,
     vaultPath,
+    slashExtras,
   })
 
   return (
@@ -577,6 +647,14 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
           onItemClick={(item: WikilinkSuggestionItem) => item.onItemClick()}
         />
       </SharedContextBlockNoteView>
+      <DateTimePickerPopover
+        open={datePicker.open}
+        anchorRect={datePicker.anchorRect}
+        selected={null}
+        locale={locale}
+        onSelect={handleDatePicked}
+        onClose={closeDatePicker}
+      />
     </div>
   )
 }

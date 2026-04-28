@@ -759,6 +759,21 @@ function App() {
     onVaultChanged: (path) => { void handlePulledVaultUpdate(path ? [path] : []) },
   })
 
+  const handleTaskWritten = useCallback(async (notePath: string) => {
+    try {
+      const fresh = await invoke<VaultEntry>('reload_vault_entry', { path: notePath })
+      vault.updateEntry(notePath, fresh)
+    } catch { /* ignore */ }
+    if (notes.tabs.some(tab => tab.entry.path === notePath)) {
+      try {
+        const freshContent = await invoke<string>('get_note_content', { path: notePath })
+        notes.setTabs(prev => prev.map(tab =>
+          tab.entry.path === notePath ? { ...tab, content: freshContent } : tab,
+        ))
+      } catch { /* ignore */ }
+    }
+  }, [notes, vault])
+
   const handleInitializeProperties = useCallback(async (path: string) => {
     await initializeNoteProperties(notes.handleUpdateFrontmatter, path)
   }, [notes])
@@ -919,6 +934,14 @@ function App() {
     () => vault.modifiedFiles.map((file) => `${file.relativePath}:${file.status}`).sort().join('|'),
     [vault.modifiedFiles],
   )
+  // Monotonic counter that bumps whenever `vault.entries` reference changes
+  // (any add/update/remove). Used as the TasksView refetch trigger so it
+  // never misses a checkbox edit, including offsetting flips that leave the
+  // total task count unchanged.
+  const [tasksRevisionKey, setTasksRevisionKey] = useState(0)
+  useEffect(() => {
+    setTasksRevisionKey((k) => k + 1)
+  }, [vault.entries])
   const autoGit = useAutoGit({
     enabled: settings.autogit_enabled === true,
     idleThresholdSeconds: settings.autogit_idle_threshold_seconds ?? 90,
@@ -1562,7 +1585,7 @@ function App() {
             <>
               <div className={`app__note-list${aiActivity.highlightElement === 'notelist' ? ' ai-highlight' : ''}`} style={{ width: layout.noteListWidth }}>
                 {effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'tasks' ? (
-                  <TasksView vaultPath={resolvedPath} locale={appLocale} onOpenNote={(notePath) => { const entry = vault.entries.find((e) => e.path === notePath); if (entry) notes.handleSelectNote(entry) }} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} />
+                  <TasksView vaultPath={resolvedPath} locale={appLocale} revisionKey={tasksRevisionKey} onTaskWritten={handleTaskWritten} onOpenNote={(notePath) => { const entry = vault.entries.find((e) => e.path === notePath); if (entry) notes.handleSelectNote(entry) }} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} />
                 ) : effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'pulse' ? (
                   <PulseView vaultPath={resolvedPath} onOpenNote={handlePulseOpenNote} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} locale={appLocale} />
                 ) : (

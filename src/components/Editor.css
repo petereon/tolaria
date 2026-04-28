@@ -22,6 +22,54 @@
   opacity: 0.55;
 }
 
+/* Due-chip inline content — mirrors task-due-chip colors from TasksView.css */
+.due-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.8em;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.due-chip__icon {
+  flex-shrink: 0;
+}
+
+.due-chip--overdue {
+  color: var(--accent-red, #ef4444);
+  background: color-mix(in srgb, var(--accent-red, #ef4444) 12%, transparent);
+}
+
+.due-chip--today {
+  color: var(--accent-blue, #3b82f6);
+  background: color-mix(in srgb, var(--accent-blue, #3b82f6) 12%, transparent);
+}
+
+.due-chip--tomorrow {
+  color: var(--accent-orange, #f97316);
+  background: color-mix(in srgb, var(--accent-orange, #f97316) 12%, transparent);
+}
+
+.due-chip--thisweek {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.due-chip--later {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.due-chip--none {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
 /* Breadcrumb bar: border can still react to the data attribute, but the
    breadcrumb filename/title stays visible at all times. */
 .breadcrumb-bar {

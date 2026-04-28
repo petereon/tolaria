@@ -172,6 +172,54 @@ vi.mock('./blockNoteSideMenuHoverGuard', () => ({
 
 vi.mock('./tolariaEditorFormattingConfig', () => ({
   getTolariaSlashMenuItems: vi.fn(async () => []),
+  dueSlashItem: vi.fn(() => ({
+    key: 'due',
+    title: 'Date',
+    subtext: 'Set a due date for this task',
+    aliases: ['due', 'deadline', 'date', 'time'],
+    group: 'Tasks',
+    icon: null,
+    onItemClick: vi.fn(),
+  })),
+  shouldOfferDueSlashItem: vi.fn((blockType: string) => blockType === 'checkListItem'),
+}))
+
+vi.mock('./editor/DateTimePickerPopover', () => ({
+  DateTimePickerPopover: (props: {
+    open: boolean
+    onSelect: (iso: string | null) => void
+    onClose: () => void
+  }) => (
+    <div
+      data-testid="date-picker-popover"
+      data-open={props.open ? 'true' : 'false'}
+    >
+      <button
+        type="button"
+        data-testid="date-picker-select"
+        onClick={() => props.onSelect('2025-01-15')}
+      >
+        Pick date
+      </button>
+      <button
+        type="button"
+        data-testid="date-picker-close"
+        onClick={() => props.onClose()}
+      >
+        Close
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock('./editor/insertDeadlineToken', () => ({
+  insertDeadlineToken: vi.fn((text: string, iso: string | null) =>
+    iso ? `${text} due:${iso}` : text,
+  ),
+}))
+
+vi.mock('./editor/DueChip', () => ({
+  setDueChipLocale: vi.fn(),
 }))
 
 vi.mock('./tolariaEditorFormatting', () => ({
@@ -641,5 +689,54 @@ describe('SingleEditorView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open in a new tab' }))
 
     expect(mockOpenExternalUrl).toHaveBeenCalledWith('https://example.com/docs')
+  })
+
+  it('renders the DatePickerPopover closed on initial mount', () => {
+    render(
+      <SingleEditorView
+        editor={createEditor() as never}
+        entries={[makeEntry()]}
+        onNavigateWikilink={vi.fn()}
+      />,
+    )
+
+    const popover = screen.getByTestId('date-picker-popover')
+    expect(popover).toHaveAttribute('data-open', 'false')
+  })
+
+  it('selecting a date calls editor.updateBlock with the new text and closes the popover', async () => {
+    const editor = createEditor()
+    const block = { id: 'cursor-block', type: 'checkListItem', content: [{ type: 'text', text: 'write report', styles: {} }], children: [] }
+    editor.document = [block]
+    editor.getTextCursorPosition = vi.fn(() => ({ block }))
+    const updateBlock = vi.fn()
+    const editorWithUpdate = { ...editor, updateBlock }
+
+    render(
+      <SingleEditorView
+        editor={editorWithUpdate as never}
+        entries={[makeEntry()]}
+        onNavigateWikilink={vi.fn()}
+      />,
+    )
+
+    const openDatePickerFn = (vi.mocked(
+      (await import('./tolariaEditorFormattingConfig')).dueSlashItem,
+    ).mock.calls[0]?.[0] as { onTrigger: () => void } | undefined)?.onTrigger
+
+    act(() => {
+      openDatePickerFn?.()
+    })
+
+    const popover = screen.getByTestId('date-picker-popover')
+    expect(popover).toHaveAttribute('data-open', 'true')
+
+    fireEvent.click(screen.getByTestId('date-picker-select'))
+
+    expect(updateBlock).toHaveBeenCalledWith(
+      'cursor-block',
+      expect.objectContaining({ content: 'write report due:2025-01-15' }),
+    )
+    expect(screen.getByTestId('date-picker-popover')).toHaveAttribute('data-open', 'false')
   })
 })

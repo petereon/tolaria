@@ -111,6 +111,26 @@ pub fn get_vault_tasks(vault_path: PathBuf) -> Result<Vec<CheckboxTask>, String>
     vault::get_all_vault_tasks(std::path::Path::new(&expanded))
 }
 
+#[tauri::command]
+pub fn toggle_task_completion(
+    note_path: PathBuf,
+    line_number: usize,
+    vault_path: Option<PathBuf>,
+) -> Result<bool, String> {
+    let raw_path = note_path.to_string_lossy();
+    let raw_vault_path = vault_path
+        .as_ref()
+        .map(|value| value.to_string_lossy().into_owned());
+    with_validated_path(
+        &raw_path,
+        raw_vault_path.as_deref(),
+        ValidatedPathMode::Existing,
+        |validated_path| {
+            vault::toggle_task_in_file(std::path::Path::new(validated_path), line_number)
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{collect_registered_vault_roots, find_registered_vault_root, get_vault_tasks};

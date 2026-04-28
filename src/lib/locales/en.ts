@@ -398,4 +398,13 @@ export const EN_TRANSLATIONS = {
   'tasks.groupNoDue': 'No due date',
   'tasks.showCompleted': 'Show completed',
   'tasks.openNote': 'Open note',
+
+  'editor.slash.due.title': 'Date',
+  'editor.slash.due.subtext': 'Set a due date for this task',
+  'editor.slash.due.group': 'Tasks',
+  'editor.date.today': 'Today',
+  'editor.date.tomorrow': 'Tomorrow',
+  'editor.date.nextWeek': 'Next week',
+  'editor.date.clear': 'Clear',
+  'editor.date.setTime': 'Set time',
 } as const

@@ -39,4 +39,10 @@ describe('dueBucket', () => {
   it('returns later for exactly 7 days away', () => {
     expect(dueBucket('2026-05-04', today)).toBe('later')
   })
+
+  it('accepts datetime string and strips the time part for bucket calculation', () => {
+    expect(dueBucket('2026-04-27T14:30', today)).toBe('today')
+    expect(dueBucket('2026-04-26T23:59', today)).toBe('overdue')
+    expect(dueBucket('2026-04-28T09:00', today)).toBe('tomorrow')
+  })
 })

@@ -3,7 +3,7 @@ import {
   getDefaultReactSlashMenuItems,
   type DefaultReactSuggestionItem,
 } from '@blocknote/react'
-import type { ReactElement } from 'react'
+import { createElement, type ReactElement } from 'react'
 import {
   Code2,
   Heading1,
@@ -19,6 +19,8 @@ import {
   Quote,
   type LucideIcon,
 } from 'lucide-react'
+import { CalendarBlank } from '@phosphor-icons/react'
+import { translate, type AppLocale } from '@/lib/i18n'
 
 type TolariaSlashMenuItem = DefaultReactSuggestionItem & { key: string }
 type TolariaBlockTypeSelectItem = {
@@ -100,14 +102,33 @@ export function filterTolariaSlashMenuItems<T extends TolariaSlashMenuItem>(
     }) as T[]
 }
 
+export function dueSlashItem(opts: {
+  onTrigger: () => void
+  locale: AppLocale
+}): TolariaSlashMenuItem {
+  return {
+    key: 'due',
+    title: translate(opts.locale, 'editor.slash.due.title'),
+    subtext: translate(opts.locale, 'editor.slash.due.subtext'),
+    aliases: ['due', 'deadline', 'date', 'time'],
+    group: translate(opts.locale, 'editor.slash.due.group'),
+    icon: createElement(CalendarBlank, { size: 18 }),
+    onItemClick: () => { opts.onTrigger() },
+  }
+}
+
+/** Returns true when the cursor is in a checkListItem block (gate for dueSlashItem) */
+export function shouldOfferDueSlashItem(blockType: string): boolean {
+  return blockType === 'checkListItem'
+}
+
 export function getTolariaSlashMenuItems(
   editor: Parameters<typeof getDefaultReactSlashMenuItems>[0],
   query: string,
+  extras: TolariaSlashMenuItem[] = [],
 ) {
-  return filterSuggestionItems(
-    filterTolariaSlashMenuItems(
-      getDefaultReactSlashMenuItems(editor) as TolariaSlashMenuItem[],
-    ),
-    query,
+  const baseItems = filterTolariaSlashMenuItems(
+    getDefaultReactSlashMenuItems(editor) as TolariaSlashMenuItem[],
   )
+  return filterSuggestionItems([...baseItems, ...extras], query)
 }

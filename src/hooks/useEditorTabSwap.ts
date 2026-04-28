@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type MutableRefObject } from 'react'
 import type { useCreateBlockNote } from '@blocknote/react'
 import type { VaultEntry } from '../types'
 import { splitFrontmatter, preProcessWikilinks, injectWikilinks, restoreWikilinksInBlocks } from '../utils/wikilinks'
+import { injectDueChips, restoreDueChipsInBlocks } from '../components/editor/dueChipTransform'
 import { compactMarkdown } from '../utils/compact-markdown'
 import { injectMathInBlocks, preProcessMathMarkdown } from '../utils/mathMarkdown'
 import { injectMermaidInBlocks, preProcessMermaidMarkdown, serializeMermaidAwareBlocks } from '../utils/mermaidMarkdown'
@@ -144,7 +145,8 @@ function preProcessEditorMarkdown(markdown: string, vaultPath?: string): string 
 
 function injectEditorMarkdownBlocks(blocks: EditorBlocks): EditorBlocks {
   const withWikilinks = injectWikilinks(blocks)
-  const withMath = injectMathInBlocks(withWikilinks)
+  const withDueChips = injectDueChips(withWikilinks)
+  const withMath = injectMathInBlocks(withDueChips)
   return injectMermaidInBlocks(withMath) as EditorBlocks
 }
 
@@ -275,7 +277,8 @@ function findActiveTab(options: {
 }
 
 function serializeEditorBody(editor: ReturnType<typeof useCreateBlockNote>): string {
-  const restored = restoreWikilinksInBlocks(editor.document)
+  const withoutDueChips = restoreDueChipsInBlocks(editor.document)
+  const restored = restoreWikilinksInBlocks(withoutDueChips)
   return compactMarkdown(serializeMermaidAwareBlocks(editor, restored))
 }
 
